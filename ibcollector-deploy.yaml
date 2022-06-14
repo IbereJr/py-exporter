@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ibcollector
+  labels:
+    app: ibcollector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ibcollector
+  template:
+    metadata:
+      labels:
+        app: ibcollector
+    spec:
+      containers:
+      - name: ibcollector
+        image: IbereJr/ibcollector
+        ports:
+        - containerPort: 9182
