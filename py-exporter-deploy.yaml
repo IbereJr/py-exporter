@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: ibcollector
-        image: IbereJr/ibcollector
+        image: IbereJr/py-exporter
         ports:
         - containerPort: 9182

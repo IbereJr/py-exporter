@@ -1,0 +1,191 @@
+#!/usr/bin/python3
+
+import time
+import random
+import os
+import glob
+import yaml
+import psutil
+from functools import reduce
+from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
+from prometheus_client import start_http_server
+
+Cfg={ 'Port': 9000, 'Freq': 1, 'Collect': [], 'Tags': [{'Company': 'Tivitona'}] }
+
+class CollectCPU(object):
+    def __init__(self):
+        self.kTags=[ k for lin in (t.keys() for t in Cfg['Tags']) for k in lin ]
+        self.vTags=[ v for lin in (t.values() for t in Cfg['Tags']) for v in lin ]
+    def collect(self):
+        if "cpu.times" in Cfg['Collect']:
+           cpu=psutil.cpu_times()
+           ct_us = CounterMetricFamily("cpu_times_user", "time spent by normal processes executing in user mode", labels=self.kTags)
+           ct_us.add_metric(self.vTags, cpu.user)
+           ct_sy = CounterMetricFamily("cpu_times_system", "time spent by processes executing in kernel mode", labels=self.kTags)
+           ct_sy.add_metric(self.vTags, cpu.system)
+           ct_id = CounterMetricFamily("cpu_times_idle", "time spent doing nothing", labels=self.kTags)
+           ct_id.add_metric(self.vTags, cpu.idle)
+           ct_nc = CounterMetricFamily("cpu_times_nice", "time spent by niced (prioritized) processes executing in user mode", labels=self.kTags)
+           ct_nc.add_metric(self.vTags, cpu.nice)
+           ct_io = CounterMetricFamily("cpu_times_iowait", "time spent waiting for I/O to complete", labels=self.kTags)
+           ct_io.add_metric(self.vTags, cpu.iowait)
+           ct_iq = CounterMetricFamily("cpu_times_irq", "time spent for servicing hardware interrupts", labels=self.kTags)
+           ct_iq.add_metric(self.vTags, cpu.irq)
+           ct_sf = CounterMetricFamily("cpu_times_softirq", "time spent for servicing software interrupts", labels=self.kTags)
+           ct_sf.add_metric(self.vTags, cpu.softirq)
+           ct_st = CounterMetricFamily("cpu_times_steal", "time spent by other O.S. running in a virtualized environment", labels=self.kTags)
+           ct_st.add_metric(self.vTags, cpu.steal)
+           ct_ge = CounterMetricFamily("cpu_times_guest", "time spent running a virtual CPU for guest operating systems", labels=self.kTags)
+           ct_ge.add_metric(self.vTags, cpu.guest)
+           yield from (ct_us, ct_sy, ct_id, ct_nc, ct_io, ct_iq, ct_sf, ct_st, ct_ge)
+
+        if "cpu.stats" in Cfg['Collect']:
+           cpu=psutil.cpu_stats()
+           cs_sw = CounterMetricFamily("cpu_stat_ctx_switches", "number of context switches since boot.", labels=self.kTags)
+           cs_sw.add_metric(self.vTags, cpu.ctx_switches)
+           cs_it = CounterMetricFamily("cpu_stat_interrupts", "number of interrupts since boot", labels=self.kTags)
+           cs_it.add_metric(self.vTags, cpu.interrupts)
+           cs_sf = CounterMetricFamily("cpu_stat_soft_interrupts", "number of software interrupts since boot", labels=self.kTags)
+           cs_sf.add_metric(self.vTags, cpu.soft_interrupts)
+           cs_sy = CounterMetricFamily("cpu_stat_syscalls", "number of system calls since boot", labels=self.kTags)
+           cs_sy.add_metric(self.vTags, cpu.syscalls)
+           yield from (cs_sw, cs_it, cs_sf, cs_sy)
+
+        aux = GaugeMetricFamily("cpu_count", "Return the number of logical CPUs", labels=self.kTags)
+        aux.add_metric(self.vTags, psutil.cpu_count())
+        yield aux
+
+        if "cpu.freq" in Cfg['Collect']:
+           cpu=psutil.cpu_freq()
+           lbl=self.kTags.copy(); lbl.extend(["Minimum","Maximum"])
+           val=self.vTags.copy(); val.extend([str(cpu.min), str(cpu.max)])
+           cf_cu = GaugeMetricFamily("cpu_freq", "CPU frequency, expressed in Mhz", labels=lbl)
+           cf_cu.add_metric(val, cpu.current)
+           yield cf_cu
+
+        if "cpu.load" in Cfg['Collect']:
+           cpu=psutil.getloadavg()
+           cl_1 = GaugeMetricFamily("cpu_load_1m", "System load average over last minute", labels=self.kTags)
+           cl_1.add_metric(self.vTags, cpu[0])
+           cl_5 = GaugeMetricFamily("cpu_load_5m", "System load average over last 5 minutes", labels=self.kTags)
+           cl_5.add_metric(self.vTags, cpu[1])
+           cl_15 = GaugeMetricFamily("cpu_load_15m", "System load average over last 15 minutes", labels=self.kTags)
+           cl_15.add_metric(self.vTags, cpu[2])
+           yield from (cl_1, cl_5, cl_15)
+
+        if "memory" in Cfg['Collect']:
+           mem=psutil.virtual_memory()
+           m_used = GaugeMetricFamily("memory_used", "memory used", labels=self.kTags)
+           m_used.add_metric(self.vTags, mem.used)
+           m_free = GaugeMetricFamily("memory_free", "memory not being used at all, that is readily available", labels=self.kTags)
+           m_free.add_metric(self.vTags, mem.free)
+           m_act = GaugeMetricFamily("memory_active", "memory currently in use or very recently used", labels=self.kTags)
+           m_act.add_metric(self.vTags, mem.active)
+           m_inact = GaugeMetricFamily("memory_inactive", "memory that is marked as not used", labels=self.kTags)
+           m_inact.add_metric(self.vTags, mem.inactive)
+           m_buff = GaugeMetricFamily("memory_buffers", "cache for things like file system metadata", labels=self.kTags)
+           m_buff.add_metric(self.vTags, mem.buffers)
+           m_cache = GaugeMetricFamily("memory_cached", "cache for various things", labels=self.kTags)
+           m_cache.add_metric(self.vTags, mem.cached)
+           m_shared = GaugeMetricFamily("memory_shared", "memory that may be simultaneously accessed by multiple processes", labels=self.kTags)
+           m_shared.add_metric(self.vTags, mem.shared)
+           m_slab = GaugeMetricFamily("memory_slab", "in-kernel data structures cache", labels=self.kTags)
+           m_slab.add_metric(self.vTags, mem.slab)
+           yield from (m_used, m_free, m_act, m_inact, m_buff, m_cache, m_shared, m_slab)
+
+        if "swap" in Cfg['Collect']:
+           swp=psutil.swap_memory()
+           s_total = GaugeMetricFamily("swap_total", "total swap memory in bytes", labels=self.kTags)
+           s_total.add_metric(self.vTags, swp.total)
+           s_used = GaugeMetricFamily("swap_used", "used swap memory in bytes", labels=self.kTags)
+           s_used.add_metric(self.vTags, swp.used)
+           s_free = GaugeMetricFamily("swap_free", "free swap memory in bytes", labels=self.kTags)
+           s_free.add_metric(self.vTags, swp.free)
+           s_perc = GaugeMetricFamily("swap_percent", "the percentage usage calculated as (total - available) / total * 100", labels=self.kTags)
+           s_perc.add_metric(self.vTags, swp.percent)
+           s_in = CounterMetricFamily("swap_buffers", "the number of bytes the system has swapped in from disk", labels=self.kTags)
+           s_in.add_metric(self.vTags, swp.sin)
+           s_out = CounterMetricFamily("swap_out", "the number of bytes the system has swapped out from disk", labels=self.kTags)
+           s_out.add_metric(self.vTags, swp.sout)
+           yield from (s_total, s_used, s_free, s_perc, s_in, s_out)
+
+        for disk in list(filter(lambda x: x!="disk",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("disk "), Cfg['Collect']) ,[] ))):
+           duse=psutil.disk_usage(disk)
+           lbl=self.kTags.copy(); lbl.extend(["MountPoint"])
+           val=self.vTags.copy(); val.extend([disk])
+           d_total = GaugeMetricFamily("disk_total", "Total disk space in bytes", labels=lbl)
+           d_total.add_metric(val, duse.total)
+           d_used = GaugeMetricFamily("disk_used", "Used disk space in bytes", labels=lbl)
+           d_used.add_metric(val, duse.used)
+           d_free = GaugeMetricFamily("disk_free", "Free disk space in bytes", labels=lbl)
+           d_free.add_metric(val, duse.free)
+           d_perc = GaugeMetricFamily("disk_percent", "the percentage usage calculated as (total - used) / total * 100", labels=lbl)
+           d_perc.add_metric(val, duse.percent)
+           yield from (d_total, d_used, d_free, d_perc)
+
+        dnic=psutil.net_io_counters(pernic=True)
+        for nic in list(filter(lambda x: x!="nic",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("nic "), Cfg['Collect']) ,[] ))):
+           if nic in dnic:
+              lbl=self.kTags.copy(); lbl.extend(["nic"])
+              val=self.vTags.copy(); val.extend([nic])
+              nb_send = GaugeMetricFamily("bytes_sent", "number of bytes sent", labels=lbl)
+              nb_send.add_metric(val, dnic[nic].bytes_sent)
+              nb_recv = GaugeMetricFamily("bytes_recv", "number of bytes received", labels=lbl)
+              nb_recv.add_metric(val, dnic[nic].bytes_recv)
+              np_send = GaugeMetricFamily("packets_sent", "number of packets sent", labels=lbl)
+              np_send.add_metric(val, dnic[nic].packets_sent)
+              np_recv = GaugeMetricFamily("packets_recv", "number of packets received", labels=lbl)
+              np_recv.add_metric(val, dnic[nic].packets_recv)
+              ne_in = GaugeMetricFamily("errors_in", "total number of errors while receiving", labels=lbl)
+              ne_in.add_metric(val, dnic[nic].errin)
+              ne_out = GaugeMetricFamily("errors_out", "total number of errors while sending", labels=lbl)
+              ne_out.add_metric(val, dnic[nic].errout)
+              nd_in = GaugeMetricFamily("drop_in", "total number of incoming packets which were dropped", labels=lbl)
+              nd_in.add_metric(val, dnic[nic].dropin)
+              nd_out = GaugeMetricFamily("drop_out", "total number of outgoing packets which were dropped", labels=lbl)
+              nd_out.add_metric(val, dnic[nic].dropout)
+              yield from (nb_send, nb_recv, np_send, np_recv, ne_in, ne_out, nd_in, nd_out)
+
+
+#print(psutil.disk_io_counters(perdisk=True))
+#print(psutil.net_if_stats())
+#{'eth0': snicstats(isup=True, duplex=<NicDuplex.NIC_DUPLEX_FULL: 2>, speed=100, mtu=1500),
+# 'lo': snicstats(isup=True, duplex=<NicDuplex.NIC_DUPLEX_UNKNOWN: 0>, speed=0, mtu=65536)}
+
+#print(psutil.net_connections(kind="inet4"))
+#pconn(fd=117, family=<AddressFamily.AF_INET: 2>, type=<SocketType.SOCK_STREAM: 1>, laddr=addr(ip='10.0.0.1', port=43761), raddr=addr(ip='72.14.234.100', port=80), status='CLOSING', pid=2987),
+#pconn(fd=-1, family=<AddressFamily.AF_INET: 2>, type=<SocketType.SOCK_STREAM: 1>, laddr=addr(ip='10.0.0.1', port=60759), raddr=addr(ip='72.14.234.104', port=80), status='ESTABLISHED', pid=None),
+#
+#p = psutil.Process()
+#with p.oneshot():
+#     p.name()  # execute internal routine once collecting multiple info
+#     p.cpu_times()  # return cached value
+#     p.cpu_percent()  # return cached value
+#     p.create_time()  # return cached value
+#     p.ppid()  # return cached value
+#     p.status()  #
+#
+#print(p)
+#
+
+def ReadConf(pfile=""):
+    global Cfg
+    for fl in glob.glob("config.yml")+glob.glob("config.yaml")+glob.glob(os.path.basename(__file__).rsplit('.', 1)[0]+".y*ml")+glob.glob(pfile):
+        with open(fl, 'r') as f:
+             try:
+                c = {k.lower():v for k,v in yaml.safe_load(f).items()}
+                if "port" in c: Cfg["Port"]=int(c['port'])
+                if "frequency" in c: Cfg["Freq"]=int(c['frequency'])
+                if "tags" in c: Cfg['Tags'].extend(c['tags'])
+                if "collect" in c: Cfg['Collect'].extend(c['collect'])
+             except yaml.YAMLError as error:
+                print(error)
+
+
+if __name__ == "__main__":
+    ReadConf()
+    start_http_server(Cfg["Port"])
+    REGISTRY.register(CollectCPU())
+ 
+    while True: 
+        time.sleep(Cfg["Freq"])

@@ -1,0 +1,17 @@
+port: 8282
+frequency: 5
+name: master
+Tags:
+  - Cliente: Tivit S.A.
+  - Responsavel: Luiz Almeida
+Collect:
+  - cpu.times
+  - cpu.stats
+  - cpu.freq
+  - cpu.load
+  - memory
+  - swap
+  - disk /  /tmp
+  - disk /boot
+  - nic enp4s0 wlp5s0 tun0
+
