@@ -11,7 +11,9 @@ Collect:
   - cpu.load
   - memory
   - swap
-  - disk /  /tmp
-  - disk /boot
-  - nic enp4s0 wlp5s0 tun0
-
+  - nic ens160
+  - disk / /usr /tmp /opt /boot /home /var
+  - disk /var/cache/salt/master/syndics /srv/salt /var/cache/salt/master/file_lists /var/cache/salt/master/jobs
+  - disk /var/cache/salt/master/roots /var/cache/salt/master/tokens /var/cache/salt/master/minions /var/cache/salt/master/files
+  - disk /etc/salt/pki/master /srv/pillar
+    
