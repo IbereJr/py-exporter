@@ -5,7 +5,10 @@ import random
 import os
 import glob
 import yaml
+import json
 import psutil
+import datetime
+import redis
 from functools import reduce
 from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
 from prometheus_client import start_http_server
@@ -51,9 +54,9 @@ class CollectCPU(object):
            cs_sy.add_metric(self.vTags, cpu.syscalls)
            yield from (cs_sw, cs_it, cs_sf, cs_sy)
 
-        aux = GaugeMetricFamily("cpu_count", "Return the number of logical CPUs", labels=self.kTags)
-        aux.add_metric(self.vTags, psutil.cpu_count())
-        yield aux
+        ncpu = GaugeMetricFamily("cpu_count", "Return the number of logical CPUs", labels=self.kTags)
+        ncpu.add_metric(self.vTags, psutil.cpu_count())
+        yield ncpu
 
         if "cpu.freq" in Cfg['Collect']:
            cpu=psutil.cpu_freq()
@@ -64,7 +67,7 @@ class CollectCPU(object):
            yield cf_cu
 
         if "cpu.load" in Cfg['Collect']:
-           cpu=psutil.getloadavg()
+           cpu=[x / psutil.cpu_count() * 100 for x in psutil.getloadavg()]
            cl_1 = GaugeMetricFamily("cpu_load_1m", "System load average over last minute", labels=self.kTags)
            cl_1.add_metric(self.vTags, cpu[0])
            cl_5 = GaugeMetricFamily("cpu_load_5m", "System load average over last 5 minutes", labels=self.kTags)
@@ -109,7 +112,8 @@ class CollectCPU(object):
            s_out.add_metric(self.vTags, swp.sout)
            yield from (s_total, s_used, s_free, s_perc, s_in, s_out)
 
-        for disk in list(filter(lambda x: x!="disk",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("disk "), Cfg['Collect']) ,[] ))):
+        mdisk=list(filter(lambda x: x!="disk",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("disk "), Cfg['Collect']) ,[] )))
+        for disk in mdisk:
            duse=psutil.disk_usage(disk)
            lbl=self.kTags.copy(); lbl.extend(["MountPoint"])
            val=self.vTags.copy(); val.extend([disk])
@@ -123,50 +127,156 @@ class CollectCPU(object):
            d_perc.add_metric(val, duse.percent)
            yield from (d_total, d_used, d_free, d_perc)
 
-        dnic=psutil.net_io_counters(pernic=True)
-        for nic in list(filter(lambda x: x!="nic",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("nic "), Cfg['Collect']) ,[] ))):
-           if nic in dnic:
-              lbl=self.kTags.copy(); lbl.extend(["nic"])
-              val=self.vTags.copy(); val.extend([nic])
-              nb_send = GaugeMetricFamily("bytes_sent", "number of bytes sent", labels=lbl)
-              nb_send.add_metric(val, dnic[nic].bytes_sent)
-              nb_recv = GaugeMetricFamily("bytes_recv", "number of bytes received", labels=lbl)
-              nb_recv.add_metric(val, dnic[nic].bytes_recv)
-              np_send = GaugeMetricFamily("packets_sent", "number of packets sent", labels=lbl)
-              np_send.add_metric(val, dnic[nic].packets_sent)
-              np_recv = GaugeMetricFamily("packets_recv", "number of packets received", labels=lbl)
-              np_recv.add_metric(val, dnic[nic].packets_recv)
-              ne_in = GaugeMetricFamily("errors_in", "total number of errors while receiving", labels=lbl)
-              ne_in.add_metric(val, dnic[nic].errin)
-              ne_out = GaugeMetricFamily("errors_out", "total number of errors while sending", labels=lbl)
-              ne_out.add_metric(val, dnic[nic].errout)
-              nd_in = GaugeMetricFamily("drop_in", "total number of incoming packets which were dropped", labels=lbl)
-              nd_in.add_metric(val, dnic[nic].dropin)
-              nd_out = GaugeMetricFamily("drop_out", "total number of outgoing packets which were dropped", labels=lbl)
-              nd_out.add_metric(val, dnic[nic].dropout)
-              yield from (nb_send, nb_recv, np_send, np_recv, ne_in, ne_out, nd_in, nd_out)
+        mnic=list(filter(lambda x: x!="nic",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("nic "), Cfg['Collect']) ,[] )))
+        if mnic:
+           dnic=psutil.net_io_counters(pernic=True)
+           for nic in mnic:
+              if nic in dnic:
+                 lbl=self.kTags.copy(); lbl.extend(["nic"])
+                 val=self.vTags.copy(); val.extend([nic])
+                 nb_send = GaugeMetricFamily("bytes_sent", "number of bytes sent", labels=lbl)
+                 nb_send.add_metric(val, dnic[nic].bytes_sent)
+                 nb_recv = GaugeMetricFamily("bytes_recv", "number of bytes received", labels=lbl)
+                 nb_recv.add_metric(val, dnic[nic].bytes_recv)
+                 np_send = GaugeMetricFamily("packets_sent", "number of packets sent", labels=lbl)
+                 np_send.add_metric(val, dnic[nic].packets_sent)
+                 np_recv = GaugeMetricFamily("packets_recv", "number of packets received", labels=lbl)
+                 np_recv.add_metric(val, dnic[nic].packets_recv)
+                 ne_in = GaugeMetricFamily("errors_in", "total number of errors while receiving", labels=lbl)
+                 ne_in.add_metric(val, dnic[nic].errin)
+                 ne_out = GaugeMetricFamily("errors_out", "total number of errors while sending", labels=lbl)
+                 ne_out.add_metric(val, dnic[nic].errout)
+                 nd_in = GaugeMetricFamily("drop_in", "total number of incoming packets which were dropped", labels=lbl)
+                 nd_in.add_metric(val, dnic[nic].dropin)
+                 nd_out = GaugeMetricFamily("drop_out", "total number of outgoing packets which were dropped", labels=lbl)
+                 nd_out.add_metric(val, dnic[nic].dropout)
+                 yield from (nb_send, nb_recv, np_send, np_recv, ne_in, ne_out, nd_in, nd_out)
+
+        mport=list(filter(lambda x: x!="port",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("port "), Cfg['Collect']) ,[] )))
+        if mport:
+           ps=list(filter(lambda a: str(a.raddr.port) in mport or str(a.laddr.port) in mport,[ b for b in psutil.net_connections(kind="tcp4") if b.raddr ]))
+           Procs={}
+           Stats={}
+           for p in ps:
+               Stats[p.status]=1 if p.status not in Stats else Stats[p.status]+1
+               if p.pid:
+                  Procs[p.pid]=1 if p.pid not in Procs else Procs[p.pid]+1
+           rProcs=[]
+           for p in Procs.keys():
+               proc=psutil.Process(pid=p).as_dict(attrs=['name', 'io_counters', 'num_fds', 'threads', 'cpu_percent', 'connections', 'pid', 'cmdline', 'cpu_times',  'memory_full_info', 'num_ctx_switches', 'create_time', 'memory_percent', 'num_threads', 'cpu_num', 'status' ])
+               lbl=self.kTags.copy(); lbl.extend(["name","pid","command","create_time"])
+               val=self.vTags.copy(); val.extend([ proc['name'], str(proc['pid']), " ".join(proc["cmdline"]), datetime.datetime.fromtimestamp(proc["create_time"]).strftime("%d-%m-%Y %H:%M:%S") ])
+
+               pth_c=GaugeMetricFamily("proc_threads_count", "The number of file descriptors currently opened by this process", labels=lbl)
+               pth_u=GaugeMetricFamily("proc_threads_user_time", "time spent in user mode by process threads", labels=lbl)
+               pth_s=GaugeMetricFamily("proc_threads_system_time", "time spent in kernel mode by process threads", labels=lbl)
+
+               pmm_p=GaugeMetricFamily("proc_memory_percent", "process Memory utilization as a percentage ", labels=lbl)
+               pcp_p=GaugeMetricFamily("proc_cpu_percent", "process CPU utilization as a percentage ", labels=lbl)
+               pcn_e=GaugeMetricFamily("proc_connections_established_count", "connections opened and established by process", labels=lbl)
+               pcn_o=GaugeMetricFamily("proc_connections_other_count", "connections opened and NOT established by process", labels=lbl)
+               pfd_c=GaugeMetricFamily("proc_fd_count", "The number of file descriptors currently opened by this process", labels=lbl)
+               pst_s=GaugeMetricFamily("proc_status", "The current process status (Status in Tag)", labels=lbl)
+
+               pio_r=CounterMetricFamily("proc_io_read_count", "number of read operations performed by process", labels=lbl)
+               pio_w=CounterMetricFamily("proc_io_write_count", "number of write operations performed by process", labels=lbl)
+               pio_rb=CounterMetricFamily("proc_io_read_bytes", "number of bytes read by process", labels=lbl)
+               pio_wb=CounterMetricFamily("proc_io_write_bytes", "number of bytes written by process", labels=lbl)
+               pio_rc=CounterMetricFamily("proc_io_read_chars", "bytes which this process passed to read syscalls (doesn’t care about physical disk)", labels=lbl)
+               pio_wc=CounterMetricFamily("proc_io_write_chars", "bytes which this process passed to write syscalls (doesn’t care about physical disk)", labels=lbl)
+
+               pcp_u=GaugeMetricFamily("proc_cpu_user", "time spent in user mode", labels=lbl)
+               pcp_s=GaugeMetricFamily("proc_cpu_system", "time spent in kernel mode", labels=lbl)
+               pcp_cu=GaugeMetricFamily("proc_cpu_children_user", "user time of all child processes", labels=lbl)
+               pcp_cs=GaugeMetricFamily("proc_cpu_children_system", "system time of all child processes", labels=lbl)
+               pcp_io=GaugeMetricFamily("proc_cpu_iowait", "time spent waiting for blocking I/O to complete", labels=lbl)
+               pcp_c=GaugeMetricFamily("proc_cpu", "what CPU this process is currently running on", labels=lbl)
 
 
-#print(psutil.disk_io_counters(perdisk=True))
-#print(psutil.net_if_stats())
-#{'eth0': snicstats(isup=True, duplex=<NicDuplex.NIC_DUPLEX_FULL: 2>, speed=100, mtu=1500),
-# 'lo': snicstats(isup=True, duplex=<NicDuplex.NIC_DUPLEX_UNKNOWN: 0>, speed=0, mtu=65536)}
+               pmm_rs=GaugeMetricFamily("proc_mem_rss", "Resident Set Size, this is the non-swapped physical memory a process has used", labels=lbl)
+               pmm_vm=GaugeMetricFamily("proc_mem_vms", "Virtual Memory Size, this is the total amount of virtual memory used by the process", labels=lbl)
+               pmm_sh=GaugeMetricFamily("proc_mem_shared", "memory that could be potentially shared with other processes", labels=lbl)
+               pmm_tx=GaugeMetricFamily("proc_mem_text", "TRS (text resident set) the amount of memory devoted to executable code", labels=lbl)
+               pmm_dt=GaugeMetricFamily("proc_mem_data", "DRS (data resident set) the amount of physical memory devoted to other than executable code", labels=lbl)
+               pmm_lb=GaugeMetricFamily("proc_mem_lib", "memory used by shared libraries", labels=lbl)
+               pmm_di=GaugeMetricFamily("proc_mem_dirty", "number of dirty pages", labels=lbl)
+               pmm_us=GaugeMetricFamily("proc_mem_uss", "Unique Set Size, this is the memory which is unique to a process", labels=lbl)
+               pmm_ps=GaugeMetricFamily("proc_mem_pss", "Proportional Set Size, is the amount of memory shared with other processes", labels=lbl)
+               pmm_sw=GaugeMetricFamily("proc_mem_swap", "amount of memory that has been swapped out to disk", labels=lbl)
 
-#print(psutil.net_connections(kind="inet4"))
-#pconn(fd=117, family=<AddressFamily.AF_INET: 2>, type=<SocketType.SOCK_STREAM: 1>, laddr=addr(ip='10.0.0.1', port=43761), raddr=addr(ip='72.14.234.100', port=80), status='CLOSING', pid=2987),
-#pconn(fd=-1, family=<AddressFamily.AF_INET: 2>, type=<SocketType.SOCK_STREAM: 1>, laddr=addr(ip='10.0.0.1', port=60759), raddr=addr(ip='72.14.234.104', port=80), status='ESTABLISHED', pid=None),
-#
-#p = psutil.Process()
-#with p.oneshot():
-#     p.name()  # execute internal routine once collecting multiple info
-#     p.cpu_times()  # return cached value
-#     p.cpu_percent()  # return cached value
-#     p.create_time()  # return cached value
-#     p.ppid()  # return cached value
-#     p.status()  #
-#
-#print(p)
-#
+               pcx_v=CounterMetricFamily("proc_ctx_voluntary", "number of voluntary context switches performed by this process", labels=lbl)
+               pcx_i=CounterMetricFamily("proc_ctx_involuntary", "number of involuntary context switches performed by this process", labels=lbl)
+
+               status=["running","sleeping","disk_sleep","stopped","tracing_stop","zombie","dead","wake_kill","waking","parked","idle"]
+
+               lthreads={'n':0, 'us':0, 'sys':0 }
+               for t in proc['threads']:
+                  lthreads['n'] += 1
+                  lthreads['us'] += t.user_time
+                  lthreads['sys'] += t.system_time
+                
+               lconn={'n':0, 'estab':0, 'oth':0 }
+               for c in proc['connections']:
+                  lconn['n'] += 1
+                  lconn['estab'] += 1 if c.status == 'ESTABLISHED' else 0
+                  lconn['oth'] += 1 if c.status != 'ESTABLISHED' else 0
+               
+               pth_c.add_metric(val, proc['num_threads'])
+               pth_u.add_metric(val, lthreads['us'])
+               pth_s.add_metric(val, lthreads['sys'])
+               pmm_p.add_metric(val, proc['memory_percent'])
+               pcp_p.add_metric(val, proc['cpu_percent'])
+               pcn_e.add_metric(val, lconn['estab'])
+               pcn_o.add_metric(val, lconn['oth'])
+               pfd_c.add_metric(val, proc['num_fds'])
+               lblstat=lbl.copy(); lblstat.extend(["status"])
+               valstat=val.copy(); valstat.extend([ proc['status'] ])
+               pst_s.add_metric(val, status.index(proc['status']))
+               pio_r.add_metric(val, proc['io_counters'].read_count)
+               pio_w.add_metric(val, proc['io_counters'].write_count)
+               pio_rb.add_metric(val, proc['io_counters'].read_bytes)
+               pio_wb.add_metric(val, proc['io_counters'].write_bytes)
+               pio_rc.add_metric(val, proc['io_counters'].read_chars)
+               pio_wc.add_metric(val, proc['io_counters'].write_chars)
+               pcp_u.add_metric(val, proc['cpu_times'].user)
+               pcp_s.add_metric(val, proc['cpu_times'].system)
+               pcp_cu.add_metric(val, proc['cpu_times'].children_user)
+               pcp_cs.add_metric(val, proc['cpu_times'].children_system)
+               pcp_io.add_metric(val, proc['cpu_times'].iowait)
+               pcp_c.add_metric(val, proc['cpu_num'])
+               pmm_rs.add_metric(val, proc['memory_full_info'].rss)
+               pmm_vm.add_metric(val, proc['memory_full_info'].vms)
+               pmm_sh.add_metric(val, proc['memory_full_info'].shared)
+               pmm_tx.add_metric(val, proc['memory_full_info'].text)
+               pmm_dt.add_metric(val, proc['memory_full_info'].data)
+               pmm_lb.add_metric(val, proc['memory_full_info'].lib)
+               pmm_di.add_metric(val, proc['memory_full_info'].dirty)
+               pmm_us.add_metric(val, proc['memory_full_info'].uss)
+               pmm_ps.add_metric(val, proc['memory_full_info'].pss)
+               pmm_sw.add_metric(val, proc['memory_full_info'].swap)
+               pcx_v.add_metric(val, proc['num_ctx_switches'].voluntary)
+               pcx_i.add_metric(val, proc['num_ctx_switches'].involuntary)
+
+               yield from (pth_c, pth_u, pth_s, pmm_p, pcp_p, pcn_e, pcn_o, pfd_c, pst_s, pio_r, pio_w, pio_rb, pio_wb, pio_rc, pio_wc, pcp_u, pcp_s, pcp_cu, pcp_cs, pcp_io, pcp_c, pmm_rs, pmm_vm, pmm_sh, pmm_tx, pmm_dt, pmm_lb, pmm_di, pmm_us, pmm_ps, pmm_sw, pcx_v, pcx_i)
+
+        mUrl=list(filter(lambda x: x!="get",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("get "), Cfg['Collect']) ,[] )))
+        if mUrl:
+           for url in mUrl:
+               start = time.perf_counter()
+               response = requests.get(url, timeout=timeout)
+               response_json=response.json()
+               cat_data=response_json['text']
+               print(response.elapsed)
+               print(response.elapsed.total_seconds())
+               requests.status_code
+               request_time = time.perf_counter() - start
+               self.logger.info("Request completed in {0:.0f}ms".format(request_time)
+
+        rdis=list(filter(lambda x: x!="redis",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("redis "), Cfg['Collect']) ,[] )))
+        if rdis:
+           r = redis.StrictRedis(host='localhost', port=6379, db=0)
+           print(r.execute_command('INFO')['redis_version'])
+
 
 def ReadConf(pfile=""):
     global Cfg
