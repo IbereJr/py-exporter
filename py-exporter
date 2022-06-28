@@ -467,7 +467,7 @@ def ReadConf(pfile=""):
 
 
 if __name__ == "__main__":
-    ReadConf()
+    ReadConf( os.getenv('PY_EXPORTER_CONFIG') or "" )
     start_http_server(Cfg["Port"])
     REGISTRY.register(CollectCPU())
  

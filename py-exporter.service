@@ -1,0 +1,14 @@
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+User=nobody
+Group=nobody
+Environment=PY_EXPORTER_CONFIG=/usr/local/etc/py-exporter.yaml
+Type=simple
+ExecStart=/usr/local/bin/py-exporter
+
+[Install]
+WantedBy=multi-user.target
+
