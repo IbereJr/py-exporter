@@ -3,6 +3,7 @@
 import time
 import random
 import os
+import re
 import glob
 import yaml
 import json
@@ -13,12 +14,14 @@ from functools import reduce
 from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
 from prometheus_client import start_http_server
 
-Cfg={ 'Port': 9000, 'Freq': 1, 'Collect': [], 'Tags': [{'Company': 'Tivitona'}] }
+Cfg={ 'Port': 9000, 'Freq': 1, 'Collect': [], 'Tags': [] }
 
 class CollectCPU(object):
     def __init__(self):
         self.kTags=[ k for lin in (t.keys() for t in Cfg['Tags']) for k in lin ]
         self.vTags=[ v for lin in (t.values() for t in Cfg['Tags']) for v in lin ]
+    def defs(self,obj,k):
+        return getattr(obj,k) if hasattr(obj, k) else 0
     def collect(self):
         if "cpu.times" in Cfg['Collect']:
            cpu=psutil.cpu_times()
@@ -31,7 +34,7 @@ class CollectCPU(object):
            ct_nc = CounterMetricFamily("cpu_times_nice", "time spent by niced (prioritized) processes executing in user mode", labels=self.kTags)
            ct_nc.add_metric(self.vTags, cpu.nice)
            ct_io = CounterMetricFamily("cpu_times_iowait", "time spent waiting for I/O to complete", labels=self.kTags)
-           ct_io.add_metric(self.vTags, cpu.iowait)
+           ct_io.add_metric(self.vTags, self.defs(cpu,"iowait"))
            ct_iq = CounterMetricFamily("cpu_times_irq", "time spent for servicing hardware interrupts", labels=self.kTags)
            ct_iq.add_metric(self.vTags, cpu.irq)
            ct_sf = CounterMetricFamily("cpu_times_softirq", "time spent for servicing software interrupts", labels=self.kTags)
@@ -242,7 +245,7 @@ class CollectCPU(object):
                pcp_s.add_metric(val, proc['cpu_times'].system)
                pcp_cu.add_metric(val, proc['cpu_times'].children_user)
                pcp_cs.add_metric(val, proc['cpu_times'].children_system)
-               pcp_io.add_metric(val, proc['cpu_times'].iowait)
+               pcp_io.add_metric(val, self.defs(proc['cpu_times'],"iowait"))
                pcp_c.add_metric(val, proc['cpu_num'])
                pmm_rs.add_metric(val, proc['memory_full_info'].rss)
                pmm_vm.add_metric(val, proc['memory_full_info'].vms)
@@ -262,20 +265,191 @@ class CollectCPU(object):
         mUrl=list(filter(lambda x: x!="get",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("get "), Cfg['Collect']) ,[] )))
         if mUrl:
            for url in mUrl:
-               start = time.perf_counter()
-               response = requests.get(url, timeout=timeout)
-               response_json=response.json()
-               cat_data=response_json['text']
-               print(response.elapsed)
-               print(response.elapsed.total_seconds())
-               requests.status_code
-               request_time = time.perf_counter() - start
-               self.logger.info("Request completed in {0:.0f}ms".format(request_time)
+       #        start = time.perf_counter()
+       #        response = requests.get(url, timeout=timeout)
+       #        response_json=response.json()
+       #        cat_data=response_json['text']
+               print("GET "+url)
+       #        print(response.elapsed)
+       #        print(response.elapsed.total_seconds())
+       #        requests.status_code
+       #        request_time = time.perf_counter() - start
+       #        self.logger.info("Request completed in {0:.0f}ms".format(request_time)
 
-        rdis=list(filter(lambda x: x!="redis",reduce(lambda a,b: a+b.split(), filter(lambda x: x.startswith("redis "), Cfg['Collect']) ,[] )))
-        if rdis:
-           r = redis.StrictRedis(host='localhost', port=6379, db=0)
-           print(r.execute_command('INFO')['redis_version'])
+        credis=re.match(r"redis +([^:]+)(?:(?::(\d+)|)(?:/(\d+)|))", next((o for o in Cfg["Collect"] if o.lower().startswith("redis ")),""), flags=re.IGNORECASE)
+        if credis:
+           ndb=credis.group(3) or 0
+           r = redis.StrictRedis(host=credis.group(1), port=credis.group(2) or 6379, db=ndb)
+           rinfo=r.execute_command('INFO')
+           RRet={}
+
+           lbl=self.kTags.copy(); lbl.extend(["host","database"])
+           val=self.vTags.copy(); val.extend([ credis.group(1), ndb ])
+
+           lblredis=lbl.copy(); lblredis.extend(["version","mode","os","role"])
+           valredis=val.copy(); valredis.extend([ rinfo['redis_version'], rinfo['redis_mode'], rinfo['os'], rinfo['role'] ])
+
+           RRet["status"]=GaugeMetricFamily("redis_status", "redis server status", labels=lblredis)
+           RRet["status"].add_metric(valredis, 1)
+
+           RRet["uptime_in_seconds"]=GaugeMetricFamily("redis_uptime_in_seconds",  "Number of seconds since Redis server start", labels=lbl)
+           RRet["uptime_in_days"]=GaugeMetricFamily("redis_uptime_in_days",  "Number of days since Redis server start", labels=lbl)
+           RRet["connected_clients"]=GaugeMetricFamily("redis_connected_clients",  "Number of client connections", labels=lbl)
+           RRet["blocked_clients"]=GaugeMetricFamily("redis_blocked_clients",  "Number of clients pending on a blocking call", labels=lbl)
+           RRet["used_memory"]=GaugeMetricFamily("redis_used_memory",  "Total number of bytes allocated by Redis using its allocator", labels=lbl)
+           RRet["used_memory_rss"]=GaugeMetricFamily("redis_used_memory_rss",  "Number of bytes that Redis allocated as seen by the operating system", labels=lbl)
+           RRet["used_memory_peak"]=GaugeMetricFamily("redis_used_memory_peak",  "Peak memory consumed by Redis (in bytes)", labels=lbl)
+           RRet["used_memory_overhead"]=GaugeMetricFamily("redis_used_memory_overhead",  "The sum in bytes of all overheads that the server allocated for managing its internal data structures", labels=lbl)
+           RRet["used_memory_startup"]=GaugeMetricFamily("redis_used_memory_startup",  "Initial amount of memory consumed by Redis at startup in bytes", labels=lbl)
+           RRet["used_memory_dataset"]=GaugeMetricFamily("redis_used_memory_dataset",  "The size in bytes of the dataset", labels=lbl)
+           RRet["allocator_allocated"]=GaugeMetricFamily("redis_allocator_allocated",  "Total bytes allocated form the allocator, including internal-fragmentation", labels=lbl)
+           RRet["allocator_active"]=GaugeMetricFamily("redis_allocator_active",  "Total bytes in the allocator active pages", labels=lbl)
+           RRet["allocator_resident"]=GaugeMetricFamily("redis_allocator_resident",  "Total bytes resident (RSS) in the allocator, this includes pages that can be released to the OS", labels=lbl)
+           RRet["total_system_memory"]=GaugeMetricFamily("redis_total_system_memory",  "The total amount of memory that the Redis host has", labels=lbl)
+           RRet["used_memory_lua"]=GaugeMetricFamily("redis_used_memory_lua",  "Number of bytes used by the Lua engine", labels=lbl)
+           RRet["used_memory_scripts"]=GaugeMetricFamily("redis_used_memory_scripts",  "Number of bytes used by cached Lua scripts", labels=lbl)
+           RRet["number_of_cached_scripts"]=GaugeMetricFamily("redis_number_of_cached_scripts",  "Number of loaded Scripts", labels=lbl)
+           RRet["allocator_frag_ratio"]=GaugeMetricFamily("redis_allocator_frag_ratio",  "Ratio between allocator_active and allocator_allocated", labels=lbl)
+           RRet["allocator_frag_bytes"]=GaugeMetricFamily("redis_allocator_frag_bytes",  "Delta between allocator_active and allocator_allocated", labels=lbl)
+           RRet["allocator_rss_ratio"]=GaugeMetricFamily("redis_allocator_rss_ratio",  "Ratio between allocator_resident and allocator_active", labels=lbl)
+           RRet["allocator_rss_bytes"]=GaugeMetricFamily("redis_allocator_rss_bytes",  "Delta between allocator_resident and allocator_active", labels=lbl)
+           RRet["rss_overhead_ratio"]=GaugeMetricFamily("redis_rss_overhead_ratio",  "Ratio between used_memory_rss (the process RSS) and allocator_resident", labels=lbl)
+           RRet["rss_overhead_bytes"]=GaugeMetricFamily("redis_rss_overhead_bytes",  "Delta between used_memory_rss (the process RSS) and allocator_resident", labels=lbl)
+           RRet["mem_fragmentation_ratio"]=GaugeMetricFamily("redis_mem_fragmentation_ratio",  "Ratio between used_memory_rss and used_memory", labels=lbl)
+           RRet["mem_fragmentation_bytes"]=GaugeMetricFamily("redis_mem_fragmentation_bytes",  "Delta between used_memory_rss and used_memory", labels=lbl)
+           RRet["mem_not_counted_for_evict"]=GaugeMetricFamily("redis_mem_not_counted_for_evict",  "Used memory that's not counted for key eviction", labels=lbl)
+           RRet["mem_replication_backlog"]=GaugeMetricFamily("redis_mem_replication_backlog",  "Memory used by replication backlog", labels=lbl)
+           RRet["mem_clients_slaves"]=GaugeMetricFamily("redis_mem_clients_slaves",  "Memory used by replica clients", labels=lbl)
+           RRet["mem_clients_normal"]=GaugeMetricFamily("redis_mem_clients_normal",  "Memory used by normal clients", labels=lbl)
+           RRet["mem_aof_buffer"]=GaugeMetricFamily("redis_mem_aof_buffer",  "Transient memory used for AOF and AOF rewrite buffers", labels=lbl)
+           RRet["lazyfree_pending_objects"]=GaugeMetricFamily("redis_lazyfree_pending_objects",  "The number of objects waiting to be freed", labels=lbl)
+           RRet["rdb_changes_since_last_save"]=GaugeMetricFamily("redis_rdb_changes_since_last_save",  "Number of changes since the last dump", labels=lbl)
+           RRet["rdb_bgsave_in_progress"]=GaugeMetricFamily("redis_rdb_bgsave_in_progress",  "Flag indicating a RDB save is on-going", labels=lbl)
+           RRet["rdb_last_save_time"]=GaugeMetricFamily("redis_rdb_last_save_time",  "Epoch-based timestamp of last successful RDB save", labels=lbl)
+           RRet["rdb_last_bgsave_time_sec"]=GaugeMetricFamily("redis_rdb_last_bgsave_time_sec",  "Duration of the last RDB save operation in seconds", labels=lbl)
+           RRet["rdb_current_bgsave_time_sec"]=GaugeMetricFamily("redis_rdb_current_bgsave_time_sec",  "Duration of the on-going RDB save operation if any", labels=lbl)
+           RRet["rdb_last_cow_size"]=GaugeMetricFamily("redis_rdb_last_cow_size",  "The size in bytes of copy-on-write memory during the last RDB save operation", labels=lbl)
+           RRet["aof_rewrite_in_progress"]=GaugeMetricFamily("redis_aof_rewrite_in_progress",  "Flag indicating a AOF rewrite operation is on-going", labels=lbl)
+           RRet["aof_rewrite_scheduled"]=GaugeMetricFamily("redis_aof_rewrite_scheduled",  "Flag indicating an AOF rewrite operation will be scheduled once the on-going RDB save is complete", labels=lbl)
+           RRet["aof_last_rewrite_time_sec"]=GaugeMetricFamily("redis_aof_last_rewrite_time_sec",  "Duration of the last AOF rewrite operation in seconds", labels=lbl)
+           RRet["aof_current_rewrite_time_sec"]=GaugeMetricFamily("redis_aof_current_rewrite_time_sec",  "Duration of the on-going AOF rewrite operation if any", labels=lbl)
+           RRet["aof_last_cow_size"]=GaugeMetricFamily("redis_aof_last_cow_size",  "The size in bytes of copy-on-write memory during the last AOF rewrite operation", labels=lbl)
+           RRet["total_connections_received"]=GaugeMetricFamily("redis_total_connections_received",  "Total number of connections accepted by the server", labels=lbl)
+           RRet["total_commands_processed"]=GaugeMetricFamily("redis_total_commands_processed",  "Total number of commands processed by the server", labels=lbl)
+           RRet["instantaneous_ops_per_sec"]=GaugeMetricFamily("redis_instantaneous_ops_per_sec",  "Number of commands processed per second", labels=lbl)
+           RRet["total_net_input_bytes"]=GaugeMetricFamily("redis_total_net_input_bytes",  "The total number of bytes read from the network", labels=lbl)
+           RRet["total_net_output_bytes"]=GaugeMetricFamily("redis_total_net_output_bytes",  "The total number of bytes written to the network", labels=lbl)
+           RRet["instantaneous_input_kbps"]=GaugeMetricFamily("redis_instantaneous_input_kbps",  "The network's read rate per second in KB/sec", labels=lbl)
+           RRet["instantaneous_output_kbps"]=GaugeMetricFamily("redis_instantaneous_output_kbps",  "The network's write rate per second in KB/sec", labels=lbl)
+           RRet["rejected_connections"]=GaugeMetricFamily("redis_rejected_connections",  "Number of connections rejected because of maxclients limit", labels=lbl)
+           RRet["sync_full"]=GaugeMetricFamily("redis_sync_full",  "The number of full resyncs with replicas", labels=lbl)
+           RRet["sync_partial_ok"]=GaugeMetricFamily("redis_sync_partial_ok",  "The number of accepted partial resync requests", labels=lbl)
+           RRet["sync_partial_err"]=GaugeMetricFamily("redis_sync_partial_err",  "The number of denied partial resync requests", labels=lbl)
+           RRet["expired_keys"]=GaugeMetricFamily("redis_expired_keys",  "Total number of key expiration events", labels=lbl)
+           RRet["expired_stale_perc"]=GaugeMetricFamily("redis_expired_stale_perc",  "The percentage of keys probably expired", labels=lbl)
+           RRet["expired_time_cap_reached_count"]=GaugeMetricFamily("redis_expired_time_cap_reached_count",  "The count of times that active expiry cycles have stopped early", labels=lbl)
+           RRet["evicted_keys"]=GaugeMetricFamily("redis_evicted_keys",  "Number of evicted keys due to maxmemory limit", labels=lbl)
+           RRet["keyspace_hits"]=GaugeMetricFamily("redis_keyspace_hits",  "Number of successful lookup of keys in the main dictionary", labels=lbl)
+           RRet["keyspace_misses"]=GaugeMetricFamily("redis_keyspace_misses",  "Number of failed lookup of keys in the main dictionary", labels=lbl)
+           RRet["pubsub_channels"]=GaugeMetricFamily("redis_pubsub_channels",  "Global number of pub/sub channels with client subscriptions", labels=lbl)
+           RRet["pubsub_patterns"]=GaugeMetricFamily("redis_pubsub_patterns",  "Global number of pub/sub pattern with client subscriptions", labels=lbl)
+           RRet["latest_fork_usec"]=GaugeMetricFamily("redis_latest_fork_usec",  "Duration of the latest fork operation in microseconds", labels=lbl)
+           RRet["migrate_cached_sockets"]=GaugeMetricFamily("redis_migrate_cached_sockets",  "The number of sockets open for MIGRATE purposes", labels=lbl)
+           RRet["slave_expires_tracked_keys"]=GaugeMetricFamily("redis_slave_expires_tracked_keys",  "The number of keys tracked for expiry purposes", labels=lbl)
+           RRet["connected_slaves"]=GaugeMetricFamily("redis_connected_slaves",  "Number of connected replicas", labels=lbl)
+           RRet["master_repl_offset"]=GaugeMetricFamily("redis_master_repl_offset",  "The server's current replication offset", labels=lbl)
+           RRet["second_repl_offset"]=GaugeMetricFamily("redis_second_repl_offset",  "The offset up to which replication IDs are accepted", labels=lbl)
+           RRet["repl_backlog_size"]=GaugeMetricFamily("redis_repl_backlog_size",  "Total size in bytes of the replication backlog buffer", labels=lbl)
+           RRet["repl_backlog_first_byte_offset"]=GaugeMetricFamily("redis_repl_backlog_first_byte_offset",  "The master offset of the replication backlog buffer", labels=lbl)
+           RRet["repl_backlog_histlen"]=GaugeMetricFamily("redis_repl_backlog_histlen",  "Size in bytes of the data in the replication backlog buffer", labels=lbl)
+           RRet["used_cpu_sys"]=GaugeMetricFamily("redis_used_cpu_sys",  "System CPU consumed by the Redis server", labels=lbl)
+           RRet["used_cpu_user"]=GaugeMetricFamily("redis_used_cpu_user",  "User CPU consumed by the Redis server (sum of user CPU consumed by all threads of the server process)", labels=lbl)
+           RRet["used_cpu_sys_children"]=GaugeMetricFamily("redis_used_cpu_sys_children",  "System CPU consumed by the background processes", labels=lbl)
+           RRet["used_cpu_user_children"]=GaugeMetricFamily("redis_used_cpu_user_children",  "User CPU consumed by the background processes", labels=lbl)
+           RRet["db"+ndb+"keys"]=GaugeMetricFamily("redis_database_keys",  "number of database keys", labels=lbl)
+           RRet["db"+ndb+"expires"]=GaugeMetricFamily("redis_database_expires",  "number of database with expiration", labels=lbl)
+           RRet["db"+ndb+"avg_ttl"]=GaugeMetricFamily("redis_database_avg_ttl",  "database TTL average", labels=lbl)
+           #------------------
+           RRet["uptime_in_seconds"].add_metric(val, rinfo["uptime_in_seconds"])
+           RRet["uptime_in_days"].add_metric(val, rinfo["uptime_in_days"])
+           RRet["connected_clients"].add_metric(val, rinfo["connected_clients"])
+           RRet["blocked_clients"].add_metric(val, rinfo["blocked_clients"])
+           RRet["used_memory"].add_metric(val, rinfo["used_memory"])
+           RRet["used_memory_rss"].add_metric(val, rinfo["used_memory_rss"])
+           RRet["used_memory_peak"].add_metric(val, rinfo["used_memory_peak"])
+           RRet["used_memory_overhead"].add_metric(val, rinfo["used_memory_overhead"])
+           RRet["used_memory_startup"].add_metric(val, rinfo["used_memory_startup"])
+           RRet["used_memory_dataset"].add_metric(val, rinfo["used_memory_dataset"])
+           RRet["allocator_allocated"].add_metric(val, rinfo["allocator_allocated"])
+           RRet["allocator_active"].add_metric(val, rinfo["allocator_active"])
+           RRet["allocator_resident"].add_metric(val, rinfo["allocator_resident"])
+           RRet["total_system_memory"].add_metric(val, rinfo["total_system_memory"])
+           RRet["used_memory_lua"].add_metric(val, rinfo["used_memory_lua"])
+           RRet["used_memory_scripts"].add_metric(val, rinfo["used_memory_scripts"])
+           RRet["number_of_cached_scripts"].add_metric(val, rinfo["number_of_cached_scripts"])
+           RRet["allocator_frag_ratio"].add_metric(val, rinfo["allocator_frag_ratio"])
+           RRet["allocator_frag_bytes"].add_metric(val, rinfo["allocator_frag_bytes"])
+           RRet["allocator_rss_ratio"].add_metric(val, rinfo["allocator_rss_ratio"])
+           RRet["allocator_rss_bytes"].add_metric(val, rinfo["allocator_rss_bytes"])
+           RRet["rss_overhead_ratio"].add_metric(val, rinfo["rss_overhead_ratio"])
+           RRet["rss_overhead_bytes"].add_metric(val, rinfo["rss_overhead_bytes"])
+           RRet["mem_fragmentation_ratio"].add_metric(val, rinfo["mem_fragmentation_ratio"])
+           RRet["mem_fragmentation_bytes"].add_metric(val, rinfo["mem_fragmentation_bytes"])
+           RRet["mem_not_counted_for_evict"].add_metric(val, rinfo["mem_not_counted_for_evict"])
+           RRet["mem_replication_backlog"].add_metric(val, rinfo["mem_replication_backlog"])
+           RRet["mem_clients_slaves"].add_metric(val, rinfo["mem_clients_slaves"])
+           RRet["mem_clients_normal"].add_metric(val, rinfo["mem_clients_normal"])
+           RRet["mem_aof_buffer"].add_metric(val, rinfo["mem_aof_buffer"])
+           RRet["lazyfree_pending_objects"].add_metric(val, rinfo["lazyfree_pending_objects"])
+           RRet["rdb_changes_since_last_save"].add_metric(val, rinfo["rdb_changes_since_last_save"])
+           RRet["rdb_bgsave_in_progress"].add_metric(val, rinfo["rdb_bgsave_in_progress"])
+           RRet["rdb_last_save_time"].add_metric(val, rinfo["rdb_last_save_time"])
+           RRet["rdb_last_bgsave_time_sec"].add_metric(val, rinfo["rdb_last_bgsave_time_sec"])
+           RRet["rdb_current_bgsave_time_sec"].add_metric(val, rinfo["rdb_current_bgsave_time_sec"])
+           RRet["rdb_last_cow_size"].add_metric(val, rinfo["rdb_last_cow_size"])
+           RRet["aof_rewrite_in_progress"].add_metric(val, rinfo["aof_rewrite_in_progress"])
+           RRet["aof_rewrite_scheduled"].add_metric(val, rinfo["aof_rewrite_scheduled"])
+           RRet["aof_last_rewrite_time_sec"].add_metric(val, rinfo["aof_last_rewrite_time_sec"])
+           RRet["aof_current_rewrite_time_sec"].add_metric(val, rinfo["aof_current_rewrite_time_sec"])
+           RRet["aof_last_cow_size"].add_metric(val, rinfo["aof_last_cow_size"])
+           RRet["total_connections_received"].add_metric(val, rinfo["total_connections_received"])
+           RRet["total_commands_processed"].add_metric(val, rinfo["total_commands_processed"])
+           RRet["instantaneous_ops_per_sec"].add_metric(val, rinfo["instantaneous_ops_per_sec"])
+           RRet["total_net_input_bytes"].add_metric(val, rinfo["total_net_input_bytes"])
+           RRet["total_net_output_bytes"].add_metric(val, rinfo["total_net_output_bytes"])
+           RRet["instantaneous_input_kbps"].add_metric(val, rinfo["instantaneous_input_kbps"])
+           RRet["instantaneous_output_kbps"].add_metric(val, rinfo["instantaneous_output_kbps"])
+           RRet["rejected_connections"].add_metric(val, rinfo["rejected_connections"])
+           RRet["sync_full"].add_metric(val, rinfo["sync_full"])
+           RRet["sync_partial_ok"].add_metric(val, rinfo["sync_partial_ok"])
+           RRet["sync_partial_err"].add_metric(val, rinfo["sync_partial_err"])
+           RRet["expired_keys"].add_metric(val, rinfo["expired_keys"])
+           RRet["expired_stale_perc"].add_metric(val, rinfo["expired_stale_perc"])
+           RRet["expired_time_cap_reached_count"].add_metric(val, rinfo["expired_time_cap_reached_count"])
+           RRet["evicted_keys"].add_metric(val, rinfo["evicted_keys"])
+           RRet["keyspace_hits"].add_metric(val, rinfo["keyspace_hits"])
+           RRet["keyspace_misses"].add_metric(val, rinfo["keyspace_misses"])
+           RRet["pubsub_channels"].add_metric(val, rinfo["pubsub_channels"])
+           RRet["pubsub_patterns"].add_metric(val, rinfo["pubsub_patterns"])
+           RRet["latest_fork_usec"].add_metric(val, rinfo["latest_fork_usec"])
+           RRet["migrate_cached_sockets"].add_metric(val, rinfo["migrate_cached_sockets"])
+           RRet["slave_expires_tracked_keys"].add_metric(val, rinfo["slave_expires_tracked_keys"])
+           RRet["connected_slaves"].add_metric(val, rinfo["connected_slaves"])
+           RRet["master_repl_offset"].add_metric(val, rinfo["master_repl_offset"])
+           RRet["second_repl_offset"].add_metric(val, rinfo["second_repl_offset"])
+           RRet["repl_backlog_size"].add_metric(val, rinfo["repl_backlog_size"])
+           RRet["repl_backlog_first_byte_offset"].add_metric(val, rinfo["repl_backlog_first_byte_offset"])
+           RRet["repl_backlog_histlen"].add_metric(val, rinfo["repl_backlog_histlen"])
+           RRet["used_cpu_sys"].add_metric(val, rinfo["used_cpu_sys"])
+           RRet["used_cpu_user"].add_metric(val, rinfo["used_cpu_user"])
+           RRet["used_cpu_sys_children"].add_metric(val, rinfo["used_cpu_sys_children"])
+           RRet["used_cpu_user_children"].add_metric(val, rinfo["used_cpu_user_children"])
+           RRet["db"+ndb+"keys"].add_metric(val, rinfo["db"+ndb]["keys"])
+           RRet["db"+ndb+"expires"].add_metric(val, rinfo["db"+ndb]["expires"])
+           RRet["db"+ndb+"avg_ttl"].add_metric(val, rinfo["db"+ndb]["avg_ttl"])
+
+           yield from ( RRet["status"], RRet["uptime_in_seconds"], RRet["uptime_in_days"], RRet["connected_clients"], RRet["blocked_clients"], RRet["used_memory"], RRet["used_memory_rss"], RRet["used_memory_peak"], RRet["used_memory_overhead"], RRet["used_memory_startup"], RRet["used_memory_dataset"], RRet["allocator_allocated"], RRet["allocator_active"], RRet["allocator_resident"], RRet["total_system_memory"], RRet["used_memory_lua"], RRet["used_memory_scripts"], RRet["number_of_cached_scripts"], RRet["allocator_frag_ratio"], RRet["allocator_frag_bytes"], RRet["allocator_rss_ratio"], RRet["allocator_rss_bytes"], RRet["rss_overhead_ratio"], RRet["rss_overhead_bytes"], RRet["mem_fragmentation_ratio"], RRet["mem_fragmentation_bytes"], RRet["mem_not_counted_for_evict"], RRet["mem_replication_backlog"], RRet["mem_clients_slaves"], RRet["mem_clients_normal"], RRet["mem_aof_buffer"], RRet["lazyfree_pending_objects"], RRet["rdb_changes_since_last_save"], RRet["rdb_bgsave_in_progress"], RRet["rdb_last_save_time"], RRet["rdb_last_bgsave_time_sec"], RRet["rdb_current_bgsave_time_sec"], RRet["rdb_last_cow_size"], RRet["aof_rewrite_in_progress"], RRet["aof_rewrite_scheduled"], RRet["aof_last_rewrite_time_sec"], RRet["aof_current_rewrite_time_sec"], RRet["aof_last_cow_size"], RRet["total_connections_received"], RRet["total_commands_processed"], RRet["instantaneous_ops_per_sec"], RRet["total_net_input_bytes"], RRet["total_net_output_bytes"], RRet["instantaneous_input_kbps"], RRet["instantaneous_output_kbps"], RRet["rejected_connections"], RRet["sync_full"], RRet["sync_partial_ok"], RRet["sync_partial_err"], RRet["expired_keys"], RRet["expired_stale_perc"], RRet["expired_time_cap_reached_count"], RRet["evicted_keys"], RRet["keyspace_hits"], RRet["keyspace_misses"], RRet["pubsub_channels"], RRet["pubsub_patterns"], RRet["latest_fork_usec"], RRet["migrate_cached_sockets"], RRet["slave_expires_tracked_keys"], RRet["connected_slaves"], RRet["master_repl_offset"], RRet["second_repl_offset"], RRet["repl_backlog_size"], RRet["repl_backlog_first_byte_offset"], RRet["repl_backlog_histlen"], RRet["used_cpu_sys"], RRet["used_cpu_user"], RRet["used_cpu_sys_children"], RRet["used_cpu_user_children"], RRet["db"+ndb+"keys"], RRet["db"+ndb+"expires"], RRet["db"+ndb+"avg_ttl"] )
+
 
 
 def ReadConf(pfile=""):
@@ -299,3 +473,6 @@ if __name__ == "__main__":
  
     while True: 
         time.sleep(Cfg["Freq"])
+
+
+

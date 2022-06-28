@@ -1,8 +1,9 @@
 port: 8282
-frequency: 15
+frequency: 5
 name: master
 Tags:
   - Cliente: Tivit S.A.
+  - Responsavel: Luiz Almeida
 Collect:
   - cpu.times
   - cpu.stats
@@ -11,12 +12,9 @@ Collect:
   - memory
   - swap
   - nic ens160
-    # - disk / /usr /tmp /opt /boot /home /var
-  - port 4505 4506
+  - disk / /usr /tmp /opt /boot /home /var
   - disk /var/cache/salt/master/syndics /srv/salt /var/cache/salt/master/file_lists /var/cache/salt/master/jobs
   - disk /var/cache/salt/master/roots /var/cache/salt/master/tokens /var/cache/salt/master/minions /var/cache/salt/master/files
   - disk /etc/salt/pki/master /srv/pillar
-    # - SaltAPI 
-  - Redis 200.185.90.9:6379/0
-    # - get http://localhost:8200/get?Value
+  - open.ports
     
