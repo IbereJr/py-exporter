@@ -1,0 +1,348 @@
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+# HELP python_gc_objects_uncollectable_total Uncollectable object found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+# HELP python_info Python platform information
+# TYPE python_info gauge
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+# HELP cpu_times_user_total time spent by normal processes executing in user mode
+# TYPE cpu_times_user_total counter
+# HELP cpu_times_system_total time spent by processes executing in kernel mode
+# TYPE cpu_times_system_total counter
+# HELP cpu_times_idle_total time spent doing nothing
+# TYPE cpu_times_idle_total counter
+# HELP cpu_times_nice_total time spent by niced (prioritized) processes executing in user mode
+# TYPE cpu_times_nice_total counter
+# HELP cpu_times_iowait_total time spent waiting for I/O to complete
+# TYPE cpu_times_iowait_total counter
+# HELP cpu_times_irq_total time spent for servicing hardware interrupts
+# TYPE cpu_times_irq_total counter
+# HELP cpu_times_softirq_total time spent for servicing software interrupts
+# TYPE cpu_times_softirq_total counter
+# HELP cpu_times_steal_total time spent by other O.S. running in a virtualized environment
+# TYPE cpu_times_steal_total counter
+# HELP cpu_times_guest_total time spent running a virtual CPU for guest operating systems
+# TYPE cpu_times_guest_total counter
+# HELP cpu_stat_ctx_switches_total number of context switches since boot.
+# TYPE cpu_stat_ctx_switches_total counter
+# HELP cpu_stat_interrupts_total number of interrupts since boot
+# TYPE cpu_stat_interrupts_total counter
+# HELP cpu_stat_soft_interrupts_total number of software interrupts since boot
+# TYPE cpu_stat_soft_interrupts_total counter
+# HELP cpu_stat_syscalls_total number of system calls since boot
+# TYPE cpu_stat_syscalls_total counter
+# HELP cpu_count Return the number of logical CPUs
+# TYPE cpu_count gauge
+# HELP cpu_freq CPU frequency, expressed in Mhz
+# TYPE cpu_freq gauge
+# HELP cpu_load_1m System load average over last minute
+# TYPE cpu_load_1m gauge
+# HELP cpu_load_5m System load average over last 5 minutes
+# TYPE cpu_load_5m gauge
+# HELP cpu_load_15m System load average over last 15 minutes
+# TYPE cpu_load_15m gauge
+# HELP memory_used memory used
+# TYPE memory_used gauge
+# HELP memory_free memory not being used at all, that is readily available
+# TYPE memory_free gauge
+# HELP memory_active memory currently in use or very recently used
+# TYPE memory_active gauge
+# HELP memory_inactive memory that is marked as not used
+# TYPE memory_inactive gauge
+# HELP memory_buffers cache for things like file system metadata
+# TYPE memory_buffers gauge
+# HELP memory_cached cache for various things
+# TYPE memory_cached gauge
+# HELP memory_shared memory that may be simultaneously accessed by multiple processes
+# TYPE memory_shared gauge
+# HELP memory_slab in-kernel data structures cache
+# TYPE memory_slab gauge
+# HELP swap_total total swap memory in bytes
+# TYPE swap_total gauge
+# HELP swap_used used swap memory in bytes
+# TYPE swap_used gauge
+# HELP swap_free free swap memory in bytes
+# TYPE swap_free gauge
+# HELP swap_percent the percentage usage calculated as (total - available) / total * 100
+# TYPE swap_percent gauge
+# HELP swap_buffers_total the number of bytes the system has swapped in from disk
+# TYPE swap_buffers_total counter
+# HELP swap_out_total the number of bytes the system has swapped out from disk
+# TYPE swap_out_total counter
+# HELP disk_total Total disk space in bytes
+# TYPE disk_total gauge
+# HELP disk_used Used disk space in bytes
+# TYPE disk_used gauge
+# HELP disk_free Free disk space in bytes
+# TYPE disk_free gauge
+# HELP disk_percent the percentage usage calculated as (total - used) / total * 100
+# TYPE disk_percent gauge
+# HELP bytes_sent number of bytes sent
+# TYPE bytes_sent gauge
+# HELP bytes_recv number of bytes received
+# TYPE bytes_recv gauge
+# HELP packets_sent number of packets sent
+# TYPE packets_sent gauge
+# HELP packets_recv number of packets received
+# TYPE packets_recv gauge
+# HELP errors_in total number of errors while receiving
+# TYPE errors_in gauge
+# HELP errors_out total number of errors while sending
+# TYPE errors_out gauge
+# HELP drop_in total number of incoming packets which were dropped
+# TYPE drop_in gauge
+# HELP drop_out total number of outgoing packets which were dropped
+# TYPE drop_out gauge
+# HELP proc_threads_count The number of file descriptors currently opened by this process
+# TYPE proc_threads_count gauge
+# HELP proc_threads_user_time time spent in user mode by process threads
+# TYPE proc_threads_user_time gauge
+# HELP proc_threads_system_time time spent in kernel mode by process threads
+# TYPE proc_threads_system_time gauge
+# HELP proc_memory_percent process Memory utilization as a percentage 
+# TYPE proc_memory_percent gauge
+# HELP proc_cpu_percent process CPU utilization as a percentage 
+# TYPE proc_cpu_percent gauge
+# HELP proc_connections_established_count connections opened and established by process
+# TYPE proc_connections_established_count gauge
+# HELP proc_connections_other_count connections opened and NOT established by process
+# TYPE proc_connections_other_count gauge
+# HELP proc_fd_count The number of file descriptors currently opened by this process
+# TYPE proc_fd_count gauge
+# HELP proc_status The current process status (Status in Tag)
+# TYPE proc_status gauge
+# HELP proc_io_read_count_total number of read operations performed by process
+# TYPE proc_io_read_count_total counter
+# HELP proc_io_write_count_total number of write operations performed by process
+# TYPE proc_io_write_count_total counter
+# HELP proc_io_read_bytes_total number of bytes read by process
+# TYPE proc_io_read_bytes_total counter
+# HELP proc_io_write_bytes_total number of bytes written by process
+# TYPE proc_io_write_bytes_total counter
+# HELP proc_io_read_chars_total bytes which this process passed to read syscalls (doesn’t care about physical disk)
+# TYPE proc_io_read_chars_total counter
+# HELP proc_io_write_chars_total bytes which this process passed to write syscalls (doesn’t care about physical disk)
+# TYPE proc_io_write_chars_total counter
+# HELP proc_cpu_user time spent in user mode
+# TYPE proc_cpu_user gauge
+# HELP proc_cpu_system time spent in kernel mode
+# TYPE proc_cpu_system gauge
+# HELP proc_cpu_children_user user time of all child processes
+# TYPE proc_cpu_children_user gauge
+# HELP proc_cpu_children_system system time of all child processes
+# TYPE proc_cpu_children_system gauge
+# HELP proc_cpu_iowait time spent waiting for blocking I/O to complete
+# TYPE proc_cpu_iowait gauge
+# HELP proc_cpu what CPU this process is currently running on
+# TYPE proc_cpu gauge
+# HELP proc_mem_rss Resident Set Size, this is the non-swapped physical memory a process has used
+# TYPE proc_mem_rss gauge
+# HELP proc_mem_vms Virtual Memory Size, this is the total amount of virtual memory used by the process
+# TYPE proc_mem_vms gauge
+# HELP proc_mem_shared memory that could be potentially shared with other processes
+# TYPE proc_mem_shared gauge
+# HELP proc_mem_text TRS (text resident set) the amount of memory devoted to executable code
+# TYPE proc_mem_text gauge
+# HELP proc_mem_data DRS (data resident set) the amount of physical memory devoted to other than executable code
+# TYPE proc_mem_data gauge
+# HELP proc_mem_lib memory used by shared libraries
+# TYPE proc_mem_lib gauge
+# HELP proc_mem_dirty number of dirty pages
+# TYPE proc_mem_dirty gauge
+# HELP proc_mem_uss Unique Set Size, this is the memory which is unique to a process
+# TYPE proc_mem_uss gauge
+# HELP proc_mem_pss Proportional Set Size, is the amount of memory shared with other processes
+# TYPE proc_mem_pss gauge
+# HELP proc_mem_swap amount of memory that has been swapped out to disk
+# TYPE proc_mem_swap gauge
+# HELP proc_ctx_voluntary_total number of voluntary context switches performed by this process
+# TYPE proc_ctx_voluntary_total counter
+# HELP proc_ctx_involuntary_total number of involuntary context switches performed by this process
+# TYPE proc_ctx_involuntary_total counter
+# HELP http_code API HTTP Response Code
+# TYPE http_code gauge
+# HELP http_elaps API HTTP Response Time
+# TYPE http_elaps gauge
+# HELP http_real API HTTP Real Response Time
+# TYPE http_real gauge
+# HELP minion_comm Minions com comunicacao com Masteres
+# TYPE minion_comm gauge
+# HELP minion_nocomm Minions sem comunicacao com Masteres
+# TYPE minion_nocomm gauge
+# HELP elastic_comm_real ElasticSearch Count Response Time
+# TYPE elastic_comm_real gauge
+# HELP inventory_last Dias de Validacao do Inventario
+# TYPE inventory_last gauge
+# HELP no_inventory Minions sem Inventario
+# TYPE no_inventory gauge
+# HELP inventory_time Real Time to check Inventory
+# TYPE inventory_time gauge
+# HELP redis_status redis server status
+# TYPE redis_status gauge
+# HELP redis_uptime_in_seconds Number of seconds since Redis server start
+# TYPE redis_uptime_in_seconds gauge
+# HELP redis_uptime_in_days Number of days since Redis server start
+# TYPE redis_uptime_in_days gauge
+# HELP redis_connected_clients Number of client connections
+# TYPE redis_connected_clients gauge
+# HELP redis_blocked_clients Number of clients pending on a blocking call
+# TYPE redis_blocked_clients gauge
+# HELP redis_used_memory Total number of bytes allocated by Redis using its allocator
+# TYPE redis_used_memory gauge
+# HELP redis_used_memory_rss Number of bytes that Redis allocated as seen by the operating system
+# TYPE redis_used_memory_rss gauge
+# HELP redis_used_memory_peak Peak memory consumed by Redis (in bytes)
+# TYPE redis_used_memory_peak gauge
+# HELP redis_used_memory_overhead The sum in bytes of all overheads that the server allocated for managing its internal data structures
+# TYPE redis_used_memory_overhead gauge
+# HELP redis_used_memory_startup Initial amount of memory consumed by Redis at startup in bytes
+# TYPE redis_used_memory_startup gauge
+# HELP redis_used_memory_dataset The size in bytes of the dataset
+# TYPE redis_used_memory_dataset gauge
+# HELP redis_allocator_allocated Total bytes allocated form the allocator, including internal-fragmentation
+# TYPE redis_allocator_allocated gauge
+# HELP redis_allocator_active Total bytes in the allocator active pages
+# TYPE redis_allocator_active gauge
+# HELP redis_allocator_resident Total bytes resident (RSS) in the allocator, this includes pages that can be released to the OS
+# TYPE redis_allocator_resident gauge
+# HELP redis_total_system_memory The total amount of memory that the Redis host has
+# TYPE redis_total_system_memory gauge
+# HELP redis_used_memory_lua Number of bytes used by the Lua engine
+# TYPE redis_used_memory_lua gauge
+# HELP redis_used_memory_scripts Number of bytes used by cached Lua scripts
+# TYPE redis_used_memory_scripts gauge
+# HELP redis_number_of_cached_scripts Number of loaded Scripts
+# TYPE redis_number_of_cached_scripts gauge
+# HELP redis_allocator_frag_ratio Ratio between allocator_active and allocator_allocated
+# TYPE redis_allocator_frag_ratio gauge
+# HELP redis_allocator_frag_bytes Delta between allocator_active and allocator_allocated
+# TYPE redis_allocator_frag_bytes gauge
+# HELP redis_allocator_rss_ratio Ratio between allocator_resident and allocator_active
+# TYPE redis_allocator_rss_ratio gauge
+# HELP redis_allocator_rss_bytes Delta between allocator_resident and allocator_active
+# TYPE redis_allocator_rss_bytes gauge
+# HELP redis_rss_overhead_ratio Ratio between used_memory_rss (the process RSS) and allocator_resident
+# TYPE redis_rss_overhead_ratio gauge
+# HELP redis_rss_overhead_bytes Delta between used_memory_rss (the process RSS) and allocator_resident
+# TYPE redis_rss_overhead_bytes gauge
+# HELP redis_mem_fragmentation_ratio Ratio between used_memory_rss and used_memory
+# TYPE redis_mem_fragmentation_ratio gauge
+# HELP redis_mem_fragmentation_bytes Delta between used_memory_rss and used_memory
+# TYPE redis_mem_fragmentation_bytes gauge
+# HELP redis_mem_not_counted_for_evict Used memory that's not counted for key eviction
+# TYPE redis_mem_not_counted_for_evict gauge
+# HELP redis_mem_replication_backlog Memory used by replication backlog
+# TYPE redis_mem_replication_backlog gauge
+# HELP redis_mem_clients_slaves Memory used by replica clients
+# TYPE redis_mem_clients_slaves gauge
+# HELP redis_mem_clients_normal Memory used by normal clients
+# TYPE redis_mem_clients_normal gauge
+# HELP redis_mem_aof_buffer Transient memory used for AOF and AOF rewrite buffers
+# TYPE redis_mem_aof_buffer gauge
+# HELP redis_lazyfree_pending_objects The number of objects waiting to be freed
+# TYPE redis_lazyfree_pending_objects gauge
+# HELP redis_rdb_changes_since_last_save Number of changes since the last dump
+# TYPE redis_rdb_changes_since_last_save gauge
+# HELP redis_rdb_bgsave_in_progress Flag indicating a RDB save is on-going
+# TYPE redis_rdb_bgsave_in_progress gauge
+# HELP redis_rdb_last_save_time Epoch-based timestamp of last successful RDB save
+# TYPE redis_rdb_last_save_time gauge
+# HELP redis_rdb_last_bgsave_time_sec Duration of the last RDB save operation in seconds
+# TYPE redis_rdb_last_bgsave_time_sec gauge
+# HELP redis_rdb_current_bgsave_time_sec Duration of the on-going RDB save operation if any
+# TYPE redis_rdb_current_bgsave_time_sec gauge
+# HELP redis_rdb_last_cow_size The size in bytes of copy-on-write memory during the last RDB save operation
+# TYPE redis_rdb_last_cow_size gauge
+# HELP redis_aof_rewrite_in_progress Flag indicating a AOF rewrite operation is on-going
+# TYPE redis_aof_rewrite_in_progress gauge
+# HELP redis_aof_rewrite_scheduled Flag indicating an AOF rewrite operation will be scheduled once the on-going RDB save is complete
+# TYPE redis_aof_rewrite_scheduled gauge
+# HELP redis_aof_last_rewrite_time_sec Duration of the last AOF rewrite operation in seconds
+# TYPE redis_aof_last_rewrite_time_sec gauge
+# HELP redis_aof_current_rewrite_time_sec Duration of the on-going AOF rewrite operation if any
+# TYPE redis_aof_current_rewrite_time_sec gauge
+# HELP redis_aof_last_cow_size The size in bytes of copy-on-write memory during the last AOF rewrite operation
+# TYPE redis_aof_last_cow_size gauge
+# HELP redis_total_connections_received Total number of connections accepted by the server
+# TYPE redis_total_connections_received gauge
+# HELP redis_total_commands_processed Total number of commands processed by the server
+# TYPE redis_total_commands_processed gauge
+# HELP redis_instantaneous_ops_per_sec Number of commands processed per second
+# TYPE redis_instantaneous_ops_per_sec gauge
+# HELP redis_total_net_input_bytes The total number of bytes read from the network
+# TYPE redis_total_net_input_bytes gauge
+# HELP redis_total_net_output_bytes The total number of bytes written to the network
+# TYPE redis_total_net_output_bytes gauge
+# HELP redis_instantaneous_input_kbps The network's read rate per second in KB/sec
+# TYPE redis_instantaneous_input_kbps gauge
+# HELP redis_instantaneous_output_kbps The network's write rate per second in KB/sec
+# TYPE redis_instantaneous_output_kbps gauge
+# HELP redis_rejected_connections Number of connections rejected because of maxclients limit
+# TYPE redis_rejected_connections gauge
+# HELP redis_sync_full The number of full resyncs with replicas
+# TYPE redis_sync_full gauge
+# HELP redis_sync_partial_ok The number of accepted partial resync requests
+# TYPE redis_sync_partial_ok gauge
+# HELP redis_sync_partial_err The number of denied partial resync requests
+# TYPE redis_sync_partial_err gauge
+# HELP redis_expired_keys Total number of key expiration events
+# TYPE redis_expired_keys gauge
+# HELP redis_expired_stale_perc The percentage of keys probably expired
+# TYPE redis_expired_stale_perc gauge
+# HELP redis_expired_time_cap_reached_count The count of times that active expiry cycles have stopped early
+# TYPE redis_expired_time_cap_reached_count gauge
+# HELP redis_evicted_keys Number of evicted keys due to maxmemory limit
+# TYPE redis_evicted_keys gauge
+# HELP redis_keyspace_hits Number of successful lookup of keys in the main dictionary
+# TYPE redis_keyspace_hits gauge
+# HELP redis_keyspace_misses Number of failed lookup of keys in the main dictionary
+# TYPE redis_keyspace_misses gauge
+# HELP redis_pubsub_channels Global number of pub/sub channels with client subscriptions
+# TYPE redis_pubsub_channels gauge
+# HELP redis_pubsub_patterns Global number of pub/sub pattern with client subscriptions
+# TYPE redis_pubsub_patterns gauge
+# HELP redis_latest_fork_usec Duration of the latest fork operation in microseconds
+# TYPE redis_latest_fork_usec gauge
+# HELP redis_migrate_cached_sockets The number of sockets open for MIGRATE purposes
+# TYPE redis_migrate_cached_sockets gauge
+# HELP redis_slave_expires_tracked_keys The number of keys tracked for expiry purposes
+# TYPE redis_slave_expires_tracked_keys gauge
+# HELP redis_connected_slaves Number of connected replicas
+# TYPE redis_connected_slaves gauge
+# HELP redis_master_repl_offset The server's current replication offset
+# TYPE redis_master_repl_offset gauge
+# HELP redis_second_repl_offset The offset up to which replication IDs are accepted
+# TYPE redis_second_repl_offset gauge
+# HELP redis_repl_backlog_size Total size in bytes of the replication backlog buffer
+# TYPE redis_repl_backlog_size gauge
+# HELP redis_repl_backlog_first_byte_offset The master offset of the replication backlog buffer
+# TYPE redis_repl_backlog_first_byte_offset gauge
+# HELP redis_repl_backlog_histlen Size in bytes of the data in the replication backlog buffer
+# TYPE redis_repl_backlog_histlen gauge
+# HELP redis_used_cpu_sys System CPU consumed by the Redis server
+# TYPE redis_used_cpu_sys gauge
+# HELP redis_used_cpu_user User CPU consumed by the Redis server (sum of user CPU consumed by all threads of the server process)
+# TYPE redis_used_cpu_user gauge
+# HELP redis_used_cpu_sys_children System CPU consumed by the background processes
+# TYPE redis_used_cpu_sys_children gauge
+# HELP redis_used_cpu_user_children User CPU consumed by the background processes
+# TYPE redis_used_cpu_user_children gauge
+# HELP redis_database_keys number of database keys
+# TYPE redis_database_keys gauge
+# HELP redis_database_expires number of database with expiration
+# TYPE redis_database_expires gauge
+# HELP redis_database_avg_ttl database TTL average
+# TYPE redis_database_avg_ttl gauge

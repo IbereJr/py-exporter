@@ -8,15 +8,17 @@ import glob
 import yaml
 import json
 import psutil
-import datetime
 import redis
+import requests
+from datetime import datetime
 from functools import reduce
+from elasticsearch import Elasticsearch
 from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
 from prometheus_client import start_http_server
 
 Cfg={ 'Port': 9000, 'Freq': 1, 'Collect': [], 'Tags': [] }
 
-class CollectCPU(object):
+class Collect(object):
     def __init__(self):
         self.kTags=[ k for lin in (t.keys() for t in Cfg['Tags']) for k in lin ]
         self.vTags=[ v for lin in (t.values() for t in Cfg['Tags']) for v in lin ]
@@ -164,11 +166,10 @@ class CollectCPU(object):
                Stats[p.status]=1 if p.status not in Stats else Stats[p.status]+1
                if p.pid:
                   Procs[p.pid]=1 if p.pid not in Procs else Procs[p.pid]+1
-           rProcs=[]
            for p in Procs.keys():
                proc=psutil.Process(pid=p).as_dict(attrs=['name', 'io_counters', 'num_fds', 'threads', 'cpu_percent', 'connections', 'pid', 'cmdline', 'cpu_times',  'memory_full_info', 'num_ctx_switches', 'create_time', 'memory_percent', 'num_threads', 'cpu_num', 'status' ])
                lbl=self.kTags.copy(); lbl.extend(["name","pid","command","create_time"])
-               val=self.vTags.copy(); val.extend([ proc['name'], str(proc['pid']), " ".join(proc["cmdline"]), datetime.datetime.fromtimestamp(proc["create_time"]).strftime("%d-%m-%Y %H:%M:%S") ])
+               val=self.vTags.copy(); val.extend([ proc['name'], str(proc['pid']), " ".join(proc["cmdline"]), datetime.fromtimestamp(proc["create_time"]).strftime("%d-%m-%Y %H:%M:%S") ])
 
                pth_c=GaugeMetricFamily("proc_threads_count", "The number of file descriptors currently opened by this process", labels=lbl)
                pth_u=GaugeMetricFamily("proc_threads_user_time", "time spent in user mode by process threads", labels=lbl)
@@ -210,7 +211,7 @@ class CollectCPU(object):
                pcx_v=CounterMetricFamily("proc_ctx_voluntary", "number of voluntary context switches performed by this process", labels=lbl)
                pcx_i=CounterMetricFamily("proc_ctx_involuntary", "number of involuntary context switches performed by this process", labels=lbl)
 
-               status=["running","sleeping","disk_sleep","stopped","tracing_stop","zombie","dead","wake_kill","waking","parked","idle"]
+               status=["running","sleeping","disk-sleep","stopped","tracing_stop","zombie","dead","wake_kill","waking","parked","idle"]
 
                lthreads={'n':0, 'us':0, 'sys':0 }
                for t in proc['threads']:
@@ -275,6 +276,67 @@ class CollectCPU(object):
        #        requests.status_code
        #        request_time = time.perf_counter() - start
        #        self.logger.info("Request completed in {0:.0f}ms".format(request_time)
+
+        capi=re.match(r"saltapi +(.*)", next((o for o in Cfg["Collect"] if o.lower().startswith("saltapi ")),""), flags=re.IGNORECASE)
+        if capi:
+           url=capi.group(1) or "locahost:9080"
+           lbl=self.kTags.copy(); lbl.extend(["api"])
+           val=self.vTags.copy(); val.extend([url])
+           start = time.perf_counter()
+           resp = requests.get("http://"+url, timeout=5)
+           response_json=resp.json()
+           a_resp=GaugeMetricFamily("http_code", "API HTTP Response Code", labels=lbl)
+           a_resp.add_metric(val, resp.status_code)
+           a_elaps=GaugeMetricFamily("http_elaps", "API HTTP Response Time", labels=lbl)
+           a_elaps.add_metric(val, resp.elapsed.total_seconds())
+           a_real=GaugeMetricFamily("http_real", "API HTTP Real Response Time", labels=lbl)
+           a_real.add_metric(val, (time.perf_counter() - start))
+           yield from (a_resp, a_elaps, a_real)
+
+        cel=re.match(r"elastic +([^:]+):(\d+) +(.*)", next((o for o in Cfg["Collect"] if o.lower().startswith("elastic ")),""), flags=re.IGNORECASE)
+        if cel:
+           elhost=cel.group(1) or "localhost"
+           elport=cel.group(2) or "9200"
+           elopc=cel.group(3) or "comunicacao"
+
+           es = Elasticsearch([{"host": elhost, "port": elport}])
+           now = datetime.now()
+
+           lbl=self.kTags.copy(); lbl.extend(["elasticsearch"])
+           val=self.vTags.copy(); val.extend([elhost+":"+elport])
+           start = time.perf_counter()
+           res = es.get(index="analyze", id=9969036075)
+           ret = [{'minion': k, 'server': v['server_id'], 'status': v['last_seen_days']} for (k,v) in res['_source']['report'].items() if v['server_id']!='' and v['last_seen_days'] == 0]
+           nret = [{'minion': k, 'server': v['server_id'], 'status': v['last_seen_days']} for (k,v) in res['_source']['report'].items() if v['server_id']!='' and v['last_seen_days'] == 1]
+           if "comunicacao" in elopc.lower():
+              #print(nret)
+              el_nocomm=GaugeMetricFamily("minion_nocomm", "Minions sem comunicacao com Masteres", labels=lbl)
+              el_nocomm.add_metric(val, len(nret))
+              el_comm=GaugeMetricFamily("minion_comm", "Minions com comunicacao com Masteres", labels=lbl)
+              el_comm.add_metric(val, len(ret))
+              el_commreal=GaugeMetricFamily("elastic_comm_real", "ElasticSearch Count Response Time", labels=lbl)
+              el_commreal.add_metric(val, (time.perf_counter() - start))
+              yield from (el_comm, el_nocomm, el_commreal)
+
+           if "inventario" in elopc.lower():
+              start = time.perf_counter()
+              body = { "_source": { "includes": [ "last_updated", "nodename", "data.company.name", ] }, "query": {} }
+              body['query']={ "ids" : { "values" : [ x['server'] for x in ret ] } }
+              res = es.search(index='inventory', body=body, request_timeout=60, size=9999)
+              minions=[ {'minion': r['_source']['nodename'], 'last': r['_source']['last_updated'], 'diff': (now - datetime.fromtimestamp(r['_source']['last_updated'])).days, 'server': r['_id'], 'company': r['_source']['data']['company']['name']} for r in res['hits']['hits'] ]
+              noInv={ x['server'] for x in ret } - { r['_id'] for r in res['hits']['hits'] }
+
+              Inv_no=GaugeMetricFamily("no_inventory", "Minions sem Inventario", labels=lbl)
+              Inv_no.add_metric(val, len(noInv))
+
+              lblmi=self.kTags.copy(); lblmi.extend(["minion","company"])
+              Inv_last=GaugeMetricFamily("inventory_last", "Dias de Validacao do Inventario", labels=lblmi)
+              for mm in minions:
+                  valmi=self.vTags.copy(); valmi.extend([mm['minion'],mm['company']])
+                  Inv_last.add_metric(valmi, mm["diff"])
+              Inv_real=GaugeMetricFamily("inventory_time", "Real Time to check Inventory", labels=lbl)
+              Inv_real.add_metric(val, (time.perf_counter() - start))
+              yield from (Inv_no, Inv_last, Inv_real)
 
         credis=re.match(r"redis +([^:]+)(?:(?::(\d+)|)(?:/(\d+)|))", next((o for o in Cfg["Collect"] if o.lower().startswith("redis ")),""), flags=re.IGNORECASE)
         if credis:
@@ -450,8 +512,6 @@ class CollectCPU(object):
 
            yield from ( RRet["status"], RRet["uptime_in_seconds"], RRet["uptime_in_days"], RRet["connected_clients"], RRet["blocked_clients"], RRet["used_memory"], RRet["used_memory_rss"], RRet["used_memory_peak"], RRet["used_memory_overhead"], RRet["used_memory_startup"], RRet["used_memory_dataset"], RRet["allocator_allocated"], RRet["allocator_active"], RRet["allocator_resident"], RRet["total_system_memory"], RRet["used_memory_lua"], RRet["used_memory_scripts"], RRet["number_of_cached_scripts"], RRet["allocator_frag_ratio"], RRet["allocator_frag_bytes"], RRet["allocator_rss_ratio"], RRet["allocator_rss_bytes"], RRet["rss_overhead_ratio"], RRet["rss_overhead_bytes"], RRet["mem_fragmentation_ratio"], RRet["mem_fragmentation_bytes"], RRet["mem_not_counted_for_evict"], RRet["mem_replication_backlog"], RRet["mem_clients_slaves"], RRet["mem_clients_normal"], RRet["mem_aof_buffer"], RRet["lazyfree_pending_objects"], RRet["rdb_changes_since_last_save"], RRet["rdb_bgsave_in_progress"], RRet["rdb_last_save_time"], RRet["rdb_last_bgsave_time_sec"], RRet["rdb_current_bgsave_time_sec"], RRet["rdb_last_cow_size"], RRet["aof_rewrite_in_progress"], RRet["aof_rewrite_scheduled"], RRet["aof_last_rewrite_time_sec"], RRet["aof_current_rewrite_time_sec"], RRet["aof_last_cow_size"], RRet["total_connections_received"], RRet["total_commands_processed"], RRet["instantaneous_ops_per_sec"], RRet["total_net_input_bytes"], RRet["total_net_output_bytes"], RRet["instantaneous_input_kbps"], RRet["instantaneous_output_kbps"], RRet["rejected_connections"], RRet["sync_full"], RRet["sync_partial_ok"], RRet["sync_partial_err"], RRet["expired_keys"], RRet["expired_stale_perc"], RRet["expired_time_cap_reached_count"], RRet["evicted_keys"], RRet["keyspace_hits"], RRet["keyspace_misses"], RRet["pubsub_channels"], RRet["pubsub_patterns"], RRet["latest_fork_usec"], RRet["migrate_cached_sockets"], RRet["slave_expires_tracked_keys"], RRet["connected_slaves"], RRet["master_repl_offset"], RRet["second_repl_offset"], RRet["repl_backlog_size"], RRet["repl_backlog_first_byte_offset"], RRet["repl_backlog_histlen"], RRet["used_cpu_sys"], RRet["used_cpu_user"], RRet["used_cpu_sys_children"], RRet["used_cpu_user_children"], RRet["db"+ndb+"keys"], RRet["db"+ndb+"expires"], RRet["db"+ndb+"avg_ttl"] )
 
-
-
 def ReadConf(pfile=""):
     global Cfg
     for fl in glob.glob("config.yml")+glob.glob("config.yaml")+glob.glob(os.path.basename(__file__).rsplit('.', 1)[0]+".y*ml")+glob.glob(pfile):
@@ -465,14 +525,11 @@ def ReadConf(pfile=""):
              except yaml.YAMLError as error:
                 print(error)
 
-
 if __name__ == "__main__":
     ReadConf( os.getenv('PY_EXPORTER_CONFIG') or "" )
     start_http_server(Cfg["Port"])
-    REGISTRY.register(CollectCPU())
+    REGISTRY.register(Collect())
  
     while True: 
         time.sleep(Cfg["Freq"])
-
-
 

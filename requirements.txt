@@ -1,8 +1,6 @@
 prometheus_client
 psutil
-glob
-functools
+requests
+elasticsearch
 datetime
 requests
-json
-yaml
